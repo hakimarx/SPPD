@@ -1,0 +1,359 @@
+<script>
+    /**
+     * SPPD App - Google Apps Script Frontend Logic
+     */
+
+    // --- Global State ---
+    let SPPD_DATA = [];
+    let SETTINGS = {};
+
+    // --- Initialization ---
+
+    document.addEventListener('DOMContentLoaded', function () {
+        initApp();
+    });
+
+    function initApp() {
+        setupNavigation();
+        setupFormHandlers();
+        setupLumpsumCalculation();
+        setDefaultDates();
+
+        // Initial Data Load
+        refreshData();
+    }
+
+    // --- Navigation ---
+
+    function setupNavigation() {
+        const navItems = document.querySelectorAll('.nav-item');
+        navItems.forEach(item => {
+            item.addEventListener('click', function () {
+                const tabId = this.dataset.tab;
+
+                // Update UI
+                navItems.forEach(nav => nav.classList.remove('active'));
+                this.classList.add('active');
+
+                document.querySelectorAll('.tab-content').forEach(tab => {
+                    tab.classList.remove('active');
+                });
+                document.getElementById(tabId).classList.add('active');
+
+                // Tab specific actions
+                if (tabId === 'lumpsum' || tabId === 'kuitansi') {
+                    populateSPPDDropdowns();
+                }
+            });
+        });
+    }
+
+    // --- Data Operations (Google Script Calls) ---
+
+    function showLoading(show = true) {
+        document.getElementById('loading-overlay').style.display = show ? 'flex' : 'none';
+    }
+
+    function refreshData() {
+        showLoading(true);
+
+        // Load Settings first
+        google.script.run
+            .withSuccessHandler(settings => {
+                SETTINGS = settings;
+                loadSettingsUI();
+
+                // Then load SPPD data
+                google.script.run
+                    .withSuccessHandler(data => {
+                        SPPD_DATA = data;
+                        renderSPPDTable();
+                        updateDashboardStats();
+                        showLoading(false);
+                    })
+                    .withFailureHandler(error => {
+                        showToast('Gagal memuat data SPPD: ' + error.message, 'error');
+                        showLoading(false);
+                    })
+                    .getData('SPPD');
+            })
+            .withFailureHandler(error => {
+                showToast('Gagal memuat pengaturan: ' + error.message, 'error');
+                showLoading(false);
+            })
+            .getData('Pengaturan');
+    }
+
+    function saveData(sheetName, data, formId) {
+        showLoading(true);
+        google.script.run
+            .withSuccessHandler(result => {
+                showToast('Data berhasil disimpan!', 'success');
+                if (formId) resetForm(formId);
+                refreshData(); // Reload all data
+                showLoading(false);
+            })
+            .withFailureHandler(error => {
+                showToast('Gagal menyimpan data: ' + error.message, 'error');
+                showLoading(false);
+            })
+            .saveData(sheetName, data);
+    }
+
+    function generateDocument(type, id) {
+        showLoading(true);
+        google.script.run
+            .withSuccessHandler(url => {
+                showLoading(false);
+                window.open(url, '_blank');
+            })
+            .withFailureHandler(error => {
+                showToast('Gagal membuat dokumen: ' + error.message, 'error');
+                showLoading(false);
+            })
+            .generateDocument(type, id);
+    }
+
+    // --- Form Handlers ---
+
+    function setupFormHandlers() {
+        // SPPD Form
+        document.getElementById('sppd-form').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const data = {
+                nomor: document.getElementById('sppd-nomor').value,
+                tanggal: document.getElementById('sppd-tanggal').value,
+                nama: document.getElementById('sppd-nama').value,
+                nip: document.getElementById('sppd-nip').value,
+                pangkat: document.getElementById('sppd-pangkat').value,
+                jabatan: document.getElementById('sppd-jabatan').value,
+                maksud: document.getElementById('sppd-maksud').value,
+                asal: document.getElementById('sppd-asal').value,
+                tujuan: document.getElementById('sppd-tujuan').value,
+                tglBerangkat: document.getElementById('sppd-tgl-berangkat').value,
+                tglKembali: document.getElementById('sppd-tgl-kembali').value,
+                transportasi: document.getElementById('sppd-transportasi').value,
+                anggaran: document.getElementById('sppd-anggaran').value
+            };
+            saveData('SPPD', data, 'sppd-form');
+        });
+
+        // Lumpsum Form
+        document.getElementById('lumpsum-form').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const data = {
+                sppdId: document.getElementById('lumpsum-sppd').value,
+                hari: document.getElementById('lumpsum-hari').value,
+                uangHarian: document.getElementById('lumpsum-uang-harian').value,
+                transport: document.getElementById('lumpsum-transport').value,
+                penginapan: document.getElementById('lumpsum-penginapan').value,
+                malam: document.getElementById('lumpsum-malam').value,
+                representasi: document.getElementById('lumpsum-representasi').value,
+                lainnya: document.getElementById('lumpsum-lainnya').value,
+                total: hitungLumpsum() // Recalculate to be sure
+            };
+            saveData('Lumpsum', data, 'lumpsum-form');
+        });
+
+        // Kuitansi Form
+        document.getElementById('kuitansi-form').addEventListener('submit', function (e) {
+            e.preventDefault();
+            const data = {
+                nomor: document.getElementById('kuitansi-nomor').value,
+                tanggal: document.getElementById('kuitansi-tanggal').value,
+                sppdId: document.getElementById('kuitansi-sppd').value,
+                jumlah: document.getElementById('kuitansi-jumlah').value,
+                keperluan: document.getElementById('kuitansi-keperluan').value,
+                penerima: document.getElementById('kuitansi-penerima').value,
+                jabatanPenerima: document.getElementById('kuitansi-jabatan-penerima').value
+            };
+            saveData('Kuitansi', data, 'kuitansi-form');
+        });
+    }
+
+    // --- UI Helpers ---
+
+    function renderSPPDTable() {
+        const tbody = document.getElementById('sppd-table-body');
+
+        if (SPPD_DATA.length === 0) {
+            tbody.innerHTML = `
+            <tr>
+                <td colspan="6" class="empty-state">
+                    <div class="empty-state-icon">📄</div>
+                    <p>Belum ada data SPPD</p>
+                </td>
+            </tr>`;
+            return;
+        }
+
+        // Sort by date desc
+        const sortedData = [...SPPD_DATA].sort((a, b) => new Date(b.tanggal) - new Date(a.tanggal));
+
+        tbody.innerHTML = sortedData.map((sppd, index) => `
+        <tr>
+            <td>${index + 1}</td>
+            <td>${sppd.nomor}</td>
+            <td>${sppd.nama}</td>
+            <td>${sppd.tujuan}</td>
+            <td>${formatDate(sppd.tglBerangkat)}</td>
+            <td>
+                <div class="action-buttons">
+                    <button class="btn btn-sm btn-outline" onclick="generateDocument('sppd', '${sppd.id}')" title="Cetak SPPD">📄</button>
+                    <button class="btn btn-sm btn-outline" onclick="checkAndPrintLumpsum('${sppd.id}')" title="Cetak Lumpsum">💰</button>
+                </div>
+            </td>
+        </tr>
+    `).join('');
+    }
+
+    function checkAndPrintLumpsum(sppdId) {
+        // Check if lumpsum exists for this SPPD
+        showLoading(true);
+        google.script.run
+            .withSuccessHandler(data => {
+                const lumpsum = data.find(l => l.sppdId === sppdId);
+                if (lumpsum) {
+                    generateDocument('lumpsum', lumpsum.id);
+                } else {
+                    showLoading(false);
+                    if (confirm('Data Lumpsum belum ada. Input sekarang?')) {
+                        document.querySelector('[data-tab="lumpsum"]').click();
+                        setTimeout(() => {
+                            document.getElementById('lumpsum-sppd').value = sppdId;
+                        }, 500);
+                    }
+                }
+            })
+            .getData('Lumpsum');
+    }
+
+    function populateSPPDDropdowns() {
+        const lumpsumSelect = document.getElementById('lumpsum-sppd');
+        const kuitansiSelect = document.getElementById('kuitansi-sppd');
+
+        let options = '<option value="">Pilih SPPD...</option>';
+        let kuitansiOptions = '<option value="">Tidak terkait SPPD</option>';
+
+        SPPD_DATA.forEach(sppd => {
+            const opt = `<option value="${sppd.id}">${sppd.nomor} - ${sppd.nama}</option>`;
+            options += opt;
+            kuitansiOptions += opt;
+        });
+
+        lumpsumSelect.innerHTML = options;
+        kuitansiSelect.innerHTML = kuitansiOptions;
+    }
+
+    function updateDashboardStats() {
+        document.getElementById('total-sppd').textContent = SPPD_DATA.length;
+
+        // Fetch other stats async
+        google.script.run.withSuccessHandler(data => {
+            const total = data.reduce((sum, item) => sum + (Number(item.total) || 0), 0);
+            document.getElementById('total-lumpsum').textContent = formatRupiah(total);
+        }).getData('Lumpsum');
+
+        google.script.run.withSuccessHandler(data => {
+            document.getElementById('total-kuitansi').textContent = data.length;
+        }).getData('Kuitansi');
+    }
+
+    // --- Settings ---
+
+    function simpanPengaturan() {
+        const settings = {
+            instansi: document.getElementById('setting-instansi').value,
+            alamat: document.getElementById('setting-alamat').value,
+            kota: document.getElementById('setting-kota').value,
+            ttdNama: document.getElementById('setting-ttd-nama').value,
+            ttdNip: document.getElementById('setting-ttd-nip').value,
+            ttdJabatan: document.getElementById('setting-ttd-jabatan').value,
+            template_sppd_id: document.getElementById('setting-template-sppd').value,
+            template_lumpsum_id: document.getElementById('setting-template-lumpsum').value,
+            template_kuitansi_id: document.getElementById('setting-template-kuitansi').value
+        };
+        saveData('Pengaturan', settings);
+    }
+
+    function loadSettingsUI() {
+        document.getElementById('setting-instansi').value = SETTINGS.instansi || '';
+        document.getElementById('setting-alamat').value = SETTINGS.alamat || '';
+        document.getElementById('setting-kota').value = SETTINGS.kota || '';
+        document.getElementById('setting-ttd-nama').value = SETTINGS.ttdNama || '';
+        document.getElementById('setting-ttd-nip').value = SETTINGS.ttdNip || '';
+        document.getElementById('setting-ttd-jabatan').value = SETTINGS.ttdJabatan || '';
+        document.getElementById('setting-template-sppd').value = SETTINGS.template_sppd_id || '';
+        document.getElementById('setting-template-lumpsum').value = SETTINGS.template_lumpsum_id || '';
+        document.getElementById('setting-template-kuitansi').value = SETTINGS.template_kuitansi_id || '';
+    }
+
+    // --- Lumpsum Logic ---
+
+    function setupLumpsumCalculation() {
+        const inputs = ['lumpsum-hari', 'lumpsum-uang-harian', 'lumpsum-transport',
+            'lumpsum-penginapan', 'lumpsum-malam', 'lumpsum-representasi', 'lumpsum-lainnya'];
+
+        inputs.forEach(id => {
+            document.getElementById(id).addEventListener('input', hitungLumpsum);
+        });
+    }
+
+    function hitungLumpsum() {
+        const hari = parseInt(document.getElementById('lumpsum-hari').value) || 0;
+        const uangHarian = parseFloat(document.getElementById('lumpsum-uang-harian').value) || 0;
+        const transport = parseFloat(document.getElementById('lumpsum-transport').value) || 0;
+        const penginapan = parseFloat(document.getElementById('lumpsum-penginapan').value) || 0;
+        const malam = parseInt(document.getElementById('lumpsum-malam').value) || 0;
+        const representasi = parseFloat(document.getElementById('lumpsum-representasi').value) || 0;
+        const lainnya = parseFloat(document.getElementById('lumpsum-lainnya').value) || 0;
+
+        const total = (hari * uangHarian) + transport + (penginapan * malam) + representasi + lainnya;
+
+        document.getElementById('lumpsum-total').textContent = formatRupiah(total);
+        return total;
+    }
+
+    // --- Utilities ---
+
+    function resetForm(formId) {
+        document.getElementById(formId).reset();
+        setDefaultDates();
+    }
+
+    function setDefaultDates() {
+        const today = new Date().toISOString().split('T')[0];
+        const dateInputs = document.querySelectorAll('input[type="date"]');
+        dateInputs.forEach(input => {
+            if (!input.value) input.value = today;
+        });
+    }
+
+    function formatDate(dateString) {
+        if (!dateString) return '-';
+        const date = new Date(dateString);
+        return date.toLocaleDateString('id-ID', {
+            day: 'numeric',
+            month: 'short',
+            year: 'numeric'
+        });
+    }
+
+    function formatRupiah(amount) {
+        return new Intl.NumberFormat('id-ID', {
+            style: 'currency',
+            currency: 'IDR',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0
+        }).format(amount);
+    }
+
+    function showToast(message, type = 'info') {
+        const toast = document.getElementById('toast');
+        toast.textContent = message;
+        toast.className = `toast show ${type}`;
+        setTimeout(() => {
+            toast.classList.remove('show');
+        }, 3000);
+    }
+</script>
