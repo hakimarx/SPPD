@@ -3,7 +3,7 @@
 Aplikasi telah berhasil di-deploy ke akun Google Anda.
 
 **URL Aplikasi:**
-[Klik disini untuk membuka Aplikasi](https://script.google.com/macros/s/AKfycbynqsVkIWgeLtq87olbSCUv8kVmbpO_wJ1t2D13ze1e5A1gz0glPfRLFedWTKchGTHY/exec)
+[Klik disini untuk membuka Aplikasi](https://script.google.com/macros/s/AKfycbwCt0UNrn5WIy-447Axy6HHfb8M4CCS2oEy9dYluhF4IBBChTOrsfo9b5z2T37dCi33/exec)
 
 **Database Spreadsheet:**
 [Klik disini untuk membuka Database](https://docs.google.com/spreadsheets/d/1qXnhDKzWy4gXFIYWfemfuRv6w-AWtP9GptYSJl9bgto/edit)
