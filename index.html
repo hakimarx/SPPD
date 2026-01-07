@@ -1,14 +1,14 @@
 <!DOCTYPE html>
 <html lang="id">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Aplikasi SPPD - Sistem Pengelolaan Surat Perintah Perjalanan Dinas">
     <title>SPPD App - Sistem Perjalanan Dinas</title>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="css/style.css">
-    <link rel="stylesheet" href="css/print.css">
+    <?!= include('stylesheet'); ?>
 </head>
+
 <body>
     <div class="app-container">
         <!-- Sidebar -->
@@ -16,7 +16,7 @@
             <div class="sidebar-header">
                 <div class="logo">
                     <span class="logo-icon">📋</span>
-                    <span class="logo-text">SPPD App</span>
+                    <span class="logo-text">SPPD App (Cloud)</span>
                 </div>
             </div>
             <nav class="sidebar-nav">
@@ -45,11 +45,17 @@
 
         <!-- Main Content -->
         <main class="main-content">
+            <!-- Loading Overlay -->
+            <div id="loading-overlay" class="loading-overlay" style="display: none;">
+                <div class="spinner"></div>
+                <p>Memproses data...</p>
+            </div>
+
             <!-- Dashboard Tab -->
             <div id="dashboard" class="tab-content active">
                 <div class="page-header">
                     <h1>Dashboard</h1>
-                    <p>Ringkasan data perjalanan dinas</p>
+                    <p>Ringkasan data perjalanan dinas (Google Sheets)</p>
                 </div>
 
                 <div class="stats-grid">
@@ -79,10 +85,7 @@
                 <div class="data-section">
                     <div class="section-header">
                         <h2>Daftar SPPD</h2>
-                        <div class="filter-group">
-                            <input type="month" id="filter-bulan" class="filter-input" onchange="filterData()">
-                            <button class="btn btn-secondary btn-sm" onclick="filterData()">Filter</button>
-                        </div>
+                        <button class="btn btn-secondary btn-sm" onclick="refreshData()">🔄 Refresh Data</button>
                     </div>
                     <div class="table-container">
                         <table class="data-table">
@@ -100,7 +103,7 @@
                                 <tr>
                                     <td colspan="6" class="empty-state">
                                         <div class="empty-state-icon">📄</div>
-                                        <p>Belum ada data SPPD</p>
+                                        <p>Memuat data...</p>
                                     </td>
                                 </tr>
                             </tbody>
@@ -119,6 +122,7 @@
                 <div class="form-card">
                     <h3>📝 Data SPPD</h3>
                     <form id="sppd-form">
+                        <input type="hidden" id="sppd-id">
                         <div class="form-grid">
                             <div class="form-group">
                                 <label for="sppd-nomor">Nomor SPPD</label>
@@ -146,7 +150,8 @@
                             </div>
                             <div class="form-group full-width">
                                 <label for="sppd-maksud">Maksud Perjalanan Dinas</label>
-                                <textarea id="sppd-maksud" placeholder="Tujuan/maksud perjalanan dinas" rows="2" required></textarea>
+                                <textarea id="sppd-maksud" placeholder="Tujuan/maksud perjalanan dinas" rows="2"
+                                    required></textarea>
                             </div>
                             <div class="form-group">
                                 <label for="sppd-asal">Tempat Berangkat</label>
@@ -180,8 +185,9 @@
                             </div>
                         </div>
                         <div class="form-actions">
-                            <button type="button" class="btn btn-secondary" onclick="resetForm('sppd-form')">Reset</button>
-                            <button type="submit" class="btn btn-primary">💾 Simpan SPPD</button>
+                            <button type="button" class="btn btn-secondary"
+                                onclick="resetForm('sppd-form')">Reset</button>
+                            <button type="submit" class="btn btn-primary">💾 Simpan ke Sheets</button>
                         </div>
                     </form>
                 </div>
@@ -197,18 +203,14 @@
                 <div class="form-card">
                     <h3>💰 Rincian Biaya</h3>
                     <form id="lumpsum-form">
+                        <input type="hidden" id="lumpsum-id">
                         <div class="form-grid">
                             <div class="form-group full-width">
                                 <label for="lumpsum-sppd">Pilih SPPD</label>
                                 <select id="lumpsum-sppd" required>
-                                    <option value="">Pilih SPPD...</option>
+                                    <option value="">Memuat data...</option>
                                 </select>
                             </div>
-                        </div>
-
-                        <div id="lumpsum-sppd-info" class="info-card" style="display: none;">
-                            <h4>📋 Informasi SPPD</h4>
-                            <div id="lumpsum-sppd-detail"></div>
                         </div>
 
                         <div class="form-grid">
@@ -245,7 +247,7 @@
                         <div class="calculation-result">
                             <h3>Total Lumpsum</h3>
                             <div id="lumpsum-total" class="total-amount">Rp 0</div>
-                            <button type="submit" class="btn btn-primary btn-lg">💾 Simpan Lumpsum</button>
+                            <button type="submit" class="btn btn-primary btn-lg">💾 Simpan ke Sheets</button>
                         </div>
                     </form>
                 </div>
@@ -261,6 +263,7 @@
                 <div class="form-card">
                     <h3>🧾 Data Kuitansi</h3>
                     <form id="kuitansi-form">
+                        <input type="hidden" id="kuitansi-id">
                         <div class="form-grid">
                             <div class="form-group">
                                 <label for="kuitansi-nomor">Nomor Kuitansi</label>
@@ -278,7 +281,8 @@
                             </div>
                             <div class="form-group full-width">
                                 <label for="kuitansi-keperluan">Untuk Pembayaran</label>
-                                <textarea id="kuitansi-keperluan" placeholder="Keperluan pembayaran" rows="2" required></textarea>
+                                <textarea id="kuitansi-keperluan" placeholder="Keperluan pembayaran" rows="2"
+                                    required></textarea>
                             </div>
                             <div class="form-group">
                                 <label for="kuitansi-jumlah">Jumlah (Rp)</label>
@@ -294,8 +298,9 @@
                             </div>
                         </div>
                         <div class="form-actions">
-                            <button type="button" class="btn btn-secondary" onclick="resetForm('kuitansi-form')">Reset</button>
-                            <button type="submit" class="btn btn-primary">💾 Simpan Kuitansi</button>
+                            <button type="button" class="btn btn-secondary"
+                                onclick="resetForm('kuitansi-form')">Reset</button>
+                            <button type="submit" class="btn btn-primary">💾 Simpan ke Sheets</button>
                         </div>
                     </form>
                 </div>
@@ -305,7 +310,7 @@
             <div id="pengaturan" class="tab-content">
                 <div class="page-header">
                     <h1>Pengaturan</h1>
-                    <p>Konfigurasi aplikasi dan data instansi</p>
+                    <p>Konfigurasi aplikasi dan template dokumen</p>
                 </div>
 
                 <div class="form-card">
@@ -342,50 +347,38 @@
                             <input type="text" id="setting-ttd-jabatan" placeholder="Jabatan">
                         </div>
                     </div>
-                    <div class="form-actions">
-                        <button type="button" class="btn btn-primary" onclick="simpanPengaturan()">💾 Simpan Pengaturan</button>
-                    </div>
                 </div>
 
                 <div class="form-card mt-4">
-                    <h3>💾 Backup & Restore</h3>
-                    <p class="text-muted">Ekspor data untuk backup atau impor data dari backup sebelumnya.</p>
-                    <div class="form-actions" style="justify-content: flex-start; border-top: none; padding-top: 1rem; margin-top: 1rem;">
-                        <button type="button" class="btn btn-secondary" onclick="eksporData()">📤 Ekspor Data</button>
-                        <label class="btn btn-secondary" style="cursor: pointer;">
-                            📥 Impor Data
-                            <input type="file" accept=".json" onchange="imporData(event)" style="display: none;">
-                        </label>
-                        <button type="button" class="btn btn-danger" onclick="hapusSemua()">🗑️ Hapus Semua Data</button>
+                    <h3>📄 ID Template Google Docs</h3>
+                    <p class="text-muted">Masukkan ID file Google Docs untuk template dokumen.</p>
+                    <div class="form-grid">
+                        <div class="form-group full-width">
+                            <label for="setting-template-sppd">ID Template SPPD</label>
+                            <input type="text" id="setting-template-sppd" placeholder="ID File Google Doc">
+                        </div>
+                        <div class="form-group full-width">
+                            <label for="setting-template-lumpsum">ID Template Lumpsum</label>
+                            <input type="text" id="setting-template-lumpsum" placeholder="ID File Google Doc">
+                        </div>
+                        <div class="form-group full-width">
+                            <label for="setting-template-kuitansi">ID Template Kuitansi</label>
+                            <input type="text" id="setting-template-kuitansi" placeholder="ID File Google Doc">
+                        </div>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-primary" onclick="simpanPengaturan()">💾 Simpan
+                            Pengaturan</button>
                     </div>
                 </div>
             </div>
         </main>
     </div>
 
-    <!-- Print Modal -->
-    <div id="print-modal" class="modal">
-        <div class="modal-content print-preview">
-            <div class="modal-header">
-                <h2>📄 Preview Dokumen</h2>
-                <button class="modal-close" onclick="closePrintModal()">&times;</button>
-            </div>
-            <div class="modal-body">
-                <div id="print-content"></div>
-            </div>
-            <div class="modal-footer">
-                <button class="btn btn-secondary" onclick="closePrintModal()">Tutup</button>
-                <button class="btn btn-primary" onclick="cetakDokumen()">🖨️ Cetak</button>
-            </div>
-        </div>
-    </div>
-
     <!-- Toast Notification -->
     <div id="toast" class="toast"></div>
 
-    <!-- Scripts -->
-    <script src="js/storage.js"></script>
-    <script src="js/print.js"></script>
-    <script src="js/app.js"></script>
+    <?!= include('javascript'); ?>
 </body>
+
 </html>
